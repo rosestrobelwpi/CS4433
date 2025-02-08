@@ -26,20 +26,21 @@ import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 
 public class PopularPages {
-    public static class TokenizerMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+    public static class PageMapper extends Mapper<Object, Text, Text, IntWritable> {
         private final static IntWritable one = new IntWritable(1);
-        private Text word = new Text();
+        private Text page = new Text();
 
-        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
             String line = value.toString();
-            StringTokenizer tokenizer = new StringTokenizer(line);
-            while (tokenizer.hasMoreTokens()) {
-                word.set(tokenizer.nextToken());
-                context.write(word, one);
+            String[] fields = line.split("\\s+");
+            if (fields.length > 1) {
+                pageId.set(fields[1]);
+                context.write(pageId, one);
             }
         }
     }
-    public static class IntSumReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+
+    public static class PageReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
         private IntWritable result = new IntWritable();
 
         public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
@@ -47,52 +48,50 @@ public class PopularPages {
             for (IntWritable val : values) {
                 sum += val.get();
             }
-            result.set(sum);
-            context.write(key, result);
+            pageCounts.put(key.toString(), sum);
         }
-    }
 
-    public void debug(String[] args) throws Exception {
+    protected void cleanup(Context context) throws IOException, InterruptedException {
+        PriorityQueue<Map.Entry<String, Integer>> pq = new PriorityQueue<>(Comparator.comparingInt(Map.Entry::getValue)); {
+        for (Map.Entry<String, Integer> entry : pageCounts.entrySet()) {
+            pq.add(entry);
+            if (pq.size() > 10) {
+                pq.poll();
+            }
+
+            Map<String, String[]> lookup = loadLookupFile();
+            while (!pq.isEmpty()) {
+                Map.Entry<String, Integer> entry = pq.poll();
+                String pageId = entry.getKey();
+                String pageName = lookup.containsKey(pageId) ? lookup.get(pageId)[0] : "Unknown";
+                String nationality = lookup.containsKey(pageId) ? lookup.get(pageId)[1] : "Unknown";
+                context.write(new Text(pageId + "\t" + pageName + "\t" + nationality), new IntWritable(entry.getValue()));
+            }
+        }
+       private Map<String, String[]> loadLookupFile() throws IOException {
+              Map<String, String[]> lookup = new HashMap<>();
+              try (BufferedReader reader = new BufferedReader(new FileReader("lookup.txt"))) {
+                  String line;
+                  while ((line = reader.readLine()) != null) {
+                      String[] fields = line.split("\t");
+                      if (fields.length == 3) {
+                          lookup.put(fields[0], new String[] { fields[1], fields[2] });
+                      }
+                  }
+              }
+              return lookup;
+            }
+    }
+    public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "word count");
+        Job job = Job.getInstance(conf, "popular pages");
         job.setJarByClass(PopularPages.class);
-        job.setMapperClass(TokenizerMapper.class);
-        job.setCombinerClass(IntSumReducer.class);
-        job.setReducerClass(IntSumReducer.class);
+        job.setMapperClass(PageMapper.class);
+        job.setReducerClass(PageReducer.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
         job.setInputFormatClass(TextInputFormat.class);
         job.setOutputFormatClass(TextOutputFormat.class);
-        FileInputFormat.addInputPath(job, new Path(args[0]));
-        FileOutputFormat.setOutputPath(job, new Path(args[1]));
-        System.exit(job.waitForCompletion(true) ? 0 : 1);
-    }
-
-    public static class ValueComparator implements Comparator<String> {
-        Map<String, Integer> base;
-        public ValueComparator(Map<String, Integer> base) {
-            this.base = base;
-        }
-
-        public int compare(String a, String b) {
-            if (base.get(a) >= base.get(b)) {
-                return -1;
-            } else {
-                return 1;
-            }
-        }
-    }
-
-    public static void main(String[] args) throws Exception {
-        Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "word count");
-        job.setJarByClass(PopularPages.class);
-        job.setMapperClass(TokenizerMapper.class);
-        job.setCombinerClass(IntSumReducer.class);
-        job.setReducerClass(IntSumReducer.class);
-        job.setOutputKeyClass(Text.class);
-        job.setOutputValueClass(IntWritable.class);
-        job.setInputFormatClass(TextInputFormat.class);
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
         System.exit(job.waitForCompletion(true) ? 0 : 1);
