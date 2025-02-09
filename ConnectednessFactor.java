@@ -47,6 +47,11 @@ public class ConnectednessFactor {
     }
 
     public static void main(String[] args) throws Exception {
+        if (args.length < 2) {
+            System.err.println("Usage: ConnectednessFactor <input1> <output>");
+            System.exit(2);
+        }
+
         Configuration conf = new Configuration();
         Job job = Job.getInstance(conf, "connectedness factor");
         job.setJarByClass(ConnectednessFactor.class);
@@ -55,8 +60,13 @@ public class ConnectednessFactor {
         job.setReducerClass(SumReducer.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
-        FileInputFormat.addInputPath(job, new Path(args[0]));
-        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+        // Add multiple input paths
+        FileInputFormat.addInputPath(job, new Path(args[1]));  // friends.csv
+
+        // Correctly set the last argument as output path
+        FileOutputFormat.setOutputPath(job, new Path(args[2]));
+
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
