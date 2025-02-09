@@ -29,7 +29,7 @@ public class SameNationality {
         @Override
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String[] fields = value.toString().split("\t");
-            if (fields.length >= 3) {
+            if (fields.length >= 4) {
                 String name = fields[1];
                 String nationality = fields[2];
                 String hobby = fields[3];
@@ -40,36 +40,27 @@ public class SameNationality {
                     context.write(userName, userHobby);
                 }
             }
-    }
-}
-
-public static class UserReducer extends Reducer<Text, Text, Text, Text> {
-    @Override
-    public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-        StringBuilder hobbies = new StringBuilder();
-        for (Text val : values) {
-            if (hobbies.length() > 0) {
-                hobbies.append(", ");
-            }
-            hobbies.append(val.toString());
         }
-        context.write(key, new Text(hobbies.toString()));
     }
-}
 
-public static void main(String[] args) throws Exception {
-    Configuration conf = new Configuration();
-    conf.set("targetNationality", args[2]);
-    Job job = Job.getInstance(conf, "nationality filter");
-    job.setJarByClass(SameNationality.class);
-    job.setMapperClass(UserMapper.class);
-    job.setReducerClass(UserReducer.class);
-    job.setOutputKeyClass(Text.class);
-    job.setOutputValueClass(Text.class);
 
-    FileInputFormat.addInputPath(job, new Path(args[0]));
-    FileOutputFormat.setOutputPath(job, new Path(args[1]));
+    public static void main(String[] args) throws Exception {
+        if (args.length != 3) {
+            System.err.println("Usage: SameNationality <input path> <output path> <target nationality>");
+            System.exit(-1);
+        }
+        Configuration conf = new Configuration();
+        conf.set("targetNationality", args[2]);
+        Job job = Job.getInstance(conf, "nationality filter");
+        job.setJarByClass(SameNationality.class);
+        job.setMapperClass(UserMapper.class);
+        job.setNumReduceTasks(0);
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(Text.class);
 
-    System.exit(job.waitForCompletion(true) ? 0 : 1);
+        FileInputFormat.addInputPath(job, new Path(/Users/apeeriz/CS4433/pages.csv));
+        FileOutputFormat.setOutputPath(job, new Path(output));
+
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
