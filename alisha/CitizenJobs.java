@@ -10,6 +10,11 @@ import java.util.Map.Entry;
 import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
+import java.util.PriorityQueue;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.util.Set;
+import java.util.HashSet;
 
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.LongWritable;
@@ -24,58 +29,57 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 
+//PersonID,Name,Nationality,Country Code,Hobby
+//        0,Amy Garcia,Vanuatu,93,Storm Chasing
+//        1,Andrew Owens,Tuvalu,221,Sporting dog field trials
+//        2,Donna Miller,Ecuador,685,Modeling Ships
+//        3,Joyce Harper,Cameroon,967,Skydiving
 
 public class CitizenJobs {
-    public static class CountryMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+    public static class UserMapper extends Mapper<Object, Text, Text, IntWritable> {
         private final static IntWritable one = new IntWritable(1);
         private Text country = new Text();
 
-        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        @Override
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
             String line = value.toString();
-            String[] fields = line.split("\t");
-            if (fields.length >= 4) {
+            String[] fields = line.split(",");
+
+            if (fields.length > 0) {
                 country.set(fields[2]);
-                job.set(fields[3]);
-                context.write(country, job);
+                context.write(country, one);
             }
         }
     }
 
-    public static class CountryReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+    public static class UserReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+        private IntWritable result = new IntWritable();
+
+        public UserReducer() {
+            super();
+        }
+
+        @Override
         public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
-            int CitizenJobs = 0;
-            Set<String> jobs = new HashSet<>();
-
-            for (Text val : values) {
-                CitizenJobs++;
-                jobs.add(val.toString());
+            int sum = 0;
+            for (IntWritable val : values) {
+                sum += val.get();
             }
-
-            String jobList = String.join(", ", jobs);
-            String output = CitizenJobs + "\t" + jobList;
-
-            context.write(key, new Text(output));
+            result.set(sum);
+            context.write(key, result);
         }
     }
 
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "citizen jobs per country");
+        Job job = Job.getInstance(conf, "Facebook User Count by Country");
         job.setJarByClass(CitizenJobs.class);
-        job.setMapperClass(CountryMapper.class);
-        job.setReducerClass(CountryReducer.class);
-
-        job.setMapOutputKeyClass(Text.class);
-        job.setMapOutputValueClass(IntWritable.class);
+        job.setMapperClass(UserMapper.class);
+        job.setReducerClass(UserReducer.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
-
-        job.setInputFormatClass(TextInputFormat.class);
-        job.setOutputFormatClass(TextOutputFormat.class);
-
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
-
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
